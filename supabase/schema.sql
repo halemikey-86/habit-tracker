@@ -1,9 +1,13 @@
 -- ============================================================
--- Quest Tracker — Supabase schema
--- Run this once in the Supabase SQL editor (Project > SQL Editor > New query)
+-- Quest Tracker — Supabase schema (corrected, idempotent)
+-- Safe to run on an EMPTY database, and safe to RE-RUN later
+-- without creating duplicate rows or throwing errors.
+-- Run in: Supabase Project > SQL Editor > New query > Run
 -- ============================================================
 
-create extension if not exists pgcrypto;
+begin;
+
+create extension if not exists pgcrypto with schema extensions;
 
 -- ---------- USERS (custom login, not Supabase Auth) ----------
 create table if not exists app_users (
@@ -19,17 +23,16 @@ alter table app_users enable row level security;
 -- security-definer login() function below, so the password hash is never
 -- directly selectable from the client.
 
--- Login check: returns a row only if name + password match.
 create or replace function public.login(p_name text, p_password text)
 returns table(id uuid, role text, display_name text)
 language sql
 security definer
-set search_path = public
+set search_path = public, extensions
 as $$
   select id, role, display_name
   from app_users
   where lower(display_name) = lower(p_name)
-    and password_hash = crypt(p_password, password_hash);
+    and password_hash = extensions.crypt(p_password, password_hash);
 $$;
 
 grant execute on function public.login(text, text) to anon, authenticated;
@@ -77,6 +80,22 @@ create table if not exists rewards (
   timing text not null default 'immediate' check (timing in ('immediate','delay')),
   timing_value int not null default 0
 );
+
+-- ---------- REWARD FREQUENCY SETTINGS (new) ----------
+-- Controls how often the reward spin is triggered, independent of phase
+-- completion. Coach (Spouse A) edits this from the Setup tab.
+create table if not exists reward_settings (
+  id int primary key default 1,
+  mode text not null default 'phase_complete'
+    check (mode in ('phase_complete','weekly','random','custom')),
+  weekly_day int check (weekly_day between 0 and 6),   -- 0 = Sunday
+  random_min_days int check (random_min_days > 0),
+  random_max_days int check (random_max_days > 0),
+  custom_days int check (custom_days > 0),
+  next_trigger_date timestamptz,
+  updated_at timestamptz default now()
+);
+insert into reward_settings (id) values (1) on conflict (id) do nothing;
 
 -- ---------- DAY LOGS (one row per tic) ----------
 create table if not exists day_logs (
@@ -129,13 +148,6 @@ create table if not exists phase_reports (
 
 -- ============================================================
 -- ROW LEVEL SECURITY
--- This app uses a custom name+password login instead of Supabase Auth,
--- so there's no auth.uid() to check against. The pragmatic approach here
--- is: anon (the public API key) can read/write the app data tables, but
--- NOT app_users directly. Only people with your Supabase URL + anon key
--- can reach this data at all — don't publish those anywhere public.
--- If you want stronger isolation later, migrate to Supabase Auth and
--- swap these policies for auth.uid()-based ones.
 -- ============================================================
 
 alter table quest_state enable row level security;
@@ -143,54 +155,88 @@ alter table phases enable row level security;
 alter table checklist_items enable row level security;
 alter table conditions enable row level security;
 alter table rewards enable row level security;
+alter table reward_settings enable row level security;
 alter table day_logs enable row level security;
 alter table history enable row level security;
 alter table earned_rewards enable row level security;
 alter table phase_reports enable row level security;
 
+drop policy if exists "anon full access" on quest_state;
 create policy "anon full access" on quest_state for all using (true) with check (true);
+
+drop policy if exists "anon full access" on phases;
 create policy "anon full access" on phases for all using (true) with check (true);
+
+drop policy if exists "anon full access" on checklist_items;
 create policy "anon full access" on checklist_items for all using (true) with check (true);
+
+drop policy if exists "anon full access" on conditions;
 create policy "anon full access" on conditions for all using (true) with check (true);
+
+drop policy if exists "anon full access" on rewards;
 create policy "anon full access" on rewards for all using (true) with check (true);
+
+drop policy if exists "anon full access" on reward_settings;
+create policy "anon full access" on reward_settings for all using (true) with check (true);
+
+drop policy if exists "anon full access" on day_logs;
 create policy "anon full access" on day_logs for all using (true) with check (true);
+
+drop policy if exists "anon full access" on history;
 create policy "anon full access" on history for all using (true) with check (true);
+
+drop policy if exists "anon full access" on earned_rewards;
 create policy "anon full access" on earned_rewards for all using (true) with check (true);
+
+drop policy if exists "anon full access" on phase_reports;
 create policy "anon full access" on phase_reports for all using (true) with check (true);
 
 -- ============================================================
--- SEED DATA — starter defaults so the app isn't empty on first load.
+-- SEED DATA — only inserts if the table is currently empty,
+-- so re-running this whole script never creates duplicates.
 -- Edit/delete these in the Setup tab once the app is running.
 -- ============================================================
 
-insert into phases (name, tics, order_index) values
+insert into phases (name, tics, order_index)
+select * from (values
   ('Phase 1', 90, 0),
   ('Phase 2', 90, 1),
   ('Phase 3', 90, 2),
   ('Phase 4', 95, 3)
-on conflict do nothing;
+) as v(name, tics, order_index)
+where not exists (select 1 from phases);
 
-insert into checklist_items (label, repeat_days) values
+insert into checklist_items (label, repeat_days)
+select * from (values
   ('Example: 10 min check-in', 1)
-on conflict do nothing;
+) as v(label, repeat_days)
+where not exists (select 1 from checklist_items);
 
-insert into conditions (label, setback) values
+insert into conditions (label, setback)
+select * from (values
   ('Missed check-in', 3)
-on conflict do nothing;
+) as v(label, setback)
+where not exists (select 1 from conditions);
 
-insert into rewards (name, description, timing, timing_value) values
+insert into rewards (name, description, timing, timing_value)
+select * from (values
   ('Movie night pick', 'You choose the movie, no vetoes.', 'immediate', 0)
-on conflict do nothing;
+) as v(name, description, timing, timing_value)
+where not exists (select 1 from rewards);
+
+commit;
 
 -- ============================================================
 -- ADD YOUR TWO LOGINS
--- Replace the placeholders below, then run just this block.
--- Password = name + birthday, exactly the string you want to type to log in
--- (e.g. 'Alex0815'). It gets hashed before storage — the plain text is
--- never saved.
+-- Replace the placeholders below, then run just this block
+-- (separately from the block above, or together — both are safe
+-- to re-run since display_name is unique and uses ON CONFLICT).
+-- Password = name + birthday, exactly the string you want to type
+-- to log in (e.g. 'Alex0815'). It gets hashed before storage — the
+-- plain text password is never saved anywhere.
 -- ============================================================
 
 insert into app_users (display_name, password_hash, role) values
-  ('SpouseAName', crypt('SpouseAName0101', gen_salt('bf')), 'coach'),
-  ('SpouseBName', crypt('SpouseBName0202', gen_salt('bf')), 'player')
+  ('Hannah1999', extensions.crypt('Hannah1999', extensions.gen_salt('bf')), 'coach'),
+  ('Michael1986', extensions.crypt('Michael1986', extensions.gen_salt('bf')), 'player')
 on conflict (display_name) do nothing;

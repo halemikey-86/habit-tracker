@@ -305,7 +305,7 @@ function renderHeader(){
         <div class="title pixel">QUEST TRACKER</div>
         <div class="subtitle">Tic ${STATE.currentTic} of ${totalTics()} · ${currentPhase()? currentPhase().name : 'Complete'}</div>
       </div>
-      <button class="role-pill" id="logoutBtn">${SESSION.display_name} · ${ROLE==='coach'?'Coach':'Player'} (log out)</button>
+      <button class="role-pill" id="logoutBtn" aria-label="Log out">${SESSION.display_name} · ${ROLE==='coach'?'Coach':'Player'}</button>
     </div>
   </div>`;
 }
@@ -431,7 +431,7 @@ function renderSetup(){
   CONFIG.phases.forEach(p=>{
     html += `<div class="list-row">
       <input type="text" class="grow" data-phase-name="${p.id}" value="${p.name}">
-      <input type="number" style="width:70px" data-phase-tics="${p.id}" value="${p.tics}" min="1">
+      <input type="number" class="input-num--tics" data-phase-tics="${p.id}" value="${p.tics}" min="1">
       <button class="x-btn" data-remove-phase="${p.id}">×</button>
     </div>`;
   });
@@ -443,9 +443,9 @@ function renderSetup(){
   CONFIG.checklist.forEach(c=>{
     html += `<div class="list-row">
       <input type="text" class="grow" data-cl-label="${c.id}" value="${c.label}">
-      <span style="font-size:11px">every</span>
-      <input type="number" style="width:55px" data-cl-repeat="${c.id}" value="${c.repeatDays}" min="1">
-      <span style="font-size:11px">d</span>
+      <span class="field-hint">every</span>
+      <input type="number" class="input-num--sm" data-cl-repeat="${c.id}" value="${c.repeatDays}" min="1">
+      <span class="field-hint">d</span>
       <button class="x-btn" data-remove-cl="${c.id}">×</button>
     </div>`;
   });
@@ -456,8 +456,8 @@ function renderSetup(){
   CONFIG.negativeConditions.forEach(c=>{
     html += `<div class="list-row">
       <input type="text" class="grow" data-cond-label="${c.id}" value="${c.label}">
-      <span style="font-size:11px">−</span>
-      <input type="number" style="width:55px" data-cond-setback="${c.id}" value="${c.setback}" min="1">
+      <span class="field-hint">−</span>
+      <input type="number" class="input-num--sm" data-cond-setback="${c.id}" value="${c.setback}" min="1">
       <button class="x-btn" data-remove-cond="${c.id}">×</button>
     </div>`;
   });
@@ -466,15 +466,15 @@ function renderSetup(){
   html += `<div class="panel"><h2>REWARDS POOL</h2>
     <p class="hint">One of these is randomly won on every phase completion. "Delay" means Spouse B must wait that many extra tics before using it.</p>`;
   CONFIG.rewards.forEach(r=>{
-    html += `<div class="list-row" style="flex-wrap:wrap">
+    html += `<div class="list-row list-row--reward">
       <input type="text" class="grow" data-rw-name="${r.id}" value="${r.name}" placeholder="Reward name">
       <button class="x-btn" data-remove-rw="${r.id}">×</button>
-      <textarea style="width:100%" rows="1" data-rw-desc="${r.id}" placeholder="Description">${r.desc||''}</textarea>
-      <select data-rw-timing="${r.id}" style="width:130px">
+      <textarea class="field-full" rows="1" data-rw-desc="${r.id}" placeholder="Description">${r.desc||''}</textarea>
+      <select class="field-select" data-rw-timing="${r.id}">
         <option value="immediate" ${r.timing==='immediate'?'selected':''}>Immediate</option>
         <option value="delay" ${r.timing==='delay'?'selected':''}>Delay (tics)</option>
       </select>
-      ${r.timing==='delay'? `<input type="number" style="width:70px" data-rw-value="${r.id}" value="${r.timingValue||0}" min="0">`:''}
+      ${r.timing==='delay'? `<input type="number" class="input-num--tics" data-rw-value="${r.id}" value="${r.timingValue||0}" min="0">`:''}
     </div>`;
   });
   html += `<div class="btn-row"><button class="btn ghost" id="addRwBtn">+ Add reward</button></div></div>`;
@@ -491,24 +491,24 @@ function renderModal(){
   const report = PENDING_REPORTS[0];
 
   if(STATE.pendingSpin){
-    return `<div class="modal-bg"><div class="modal" style="text-align:center">
-      <h2 class="pixel" style="font-size:13px">PHASE COMPLETE!</h2>
+    return `<div class="modal-bg"><div class="modal modal--center">
+      <h2 class="pixel modal-title">PHASE COMPLETE!</h2>
       <p class="hint">Spin to reveal Spouse B's reward.</p>
       <div class="slot"><div class="slot-box"><div class="slot-text" id="slotText">???</div></div></div>
-      <div class="btn-row" style="justify-content:center"><button class="btn gold" id="spinBtn" ${CONFIG.rewards.length===0?'disabled':''}>🎰 Spin</button></div>
+      <div class="btn-row btn-row--center"><button class="btn gold" id="spinBtn" ${CONFIG.rewards.length===0?'disabled':''}>🎰 Spin</button></div>
       ${CONFIG.rewards.length===0?'<p class="hint">No rewards configured yet — add some in Setup, or Spouse A can skip ahead via the report card once it appears.</p>':''}
     </div></div>`;
   }
 
   const earnedThisPhase = EARNED.filter(e=> e.wonAtTic>=report.startTic && e.wonAtTic<=report.endTic);
   return `<div class="modal-bg"><div class="modal">
-    <h2 class="pixel" style="font-size:12px">${report.phaseName} REPORT CARD</h2>
-    <img src="${CHAR_IMG}" style="width:80px; display:block; margin:0 auto 10px;">
+    <h2 class="pixel modal-title">${report.phaseName} REPORT CARD</h2>
+    <img class="modal-char" src="${CHAR_IMG}" alt="">
     <div class="report-stat"><span>Tics covered</span><b>${report.startTic} – ${report.endTic}</b></div>
     <div class="report-stat"><span>Real days elapsed</span><b>${daysBetween(report.startDate,report.endDate)}</b></div>
     <div class="report-stat"><span>Set-backs incurred</span><b>${report.setbackCount}</b></div>
     <div class="report-stat"><span>Rewards earned</span><b>${earnedThisPhase.map(e=>e.name).join(', ')||'—'}</b></div>
-    <p class="hint" style="margin-top:12px">${ROLE==='coach' ? 'Review and accept to unlock the next phase for Spouse B.' : 'Waiting on Spouse A to review and accept this report.'}</p>
+    <p class="hint hint--spaced">${ROLE==='coach' ? 'Review and accept to unlock the next phase for Spouse B.' : 'Waiting on Spouse A to review and accept this report.'}</p>
     ${ROLE==='coach' ? `<div class="btn-row"><button class="btn gold" id="acceptReportBtn">Accept & continue</button></div>` : ''}
   </div></div>`;
 }
@@ -519,13 +519,13 @@ function renderLogin(){
     <div class="title pixel">QUEST TRACKER</div>
     <div class="subtitle">A two-player habit quest</div>
   </div>
-  <div class="panel" style="text-align:center">
+  <div class="panel panel--center">
     <h2>LOG IN</h2>
     <label class="field-label">Name</label>
     <input type="text" id="loginName" placeholder="Your name">
     <label class="field-label">Password</label>
     <input type="password" id="loginPassword" placeholder="namebirthday">
-    <div class="btn-row" style="justify-content:center"><button class="btn gold" id="loginBtn">Log in</button></div>
+    <div class="btn-row btn-row--center"><button class="btn gold" id="loginBtn">Log in</button></div>
     ${LOGIN_ERROR? `<div class="error-banner">${LOGIN_ERROR}</div>` : ''}
   </div>`;
 }
