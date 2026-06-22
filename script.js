@@ -280,8 +280,20 @@ async function resetQuest(){
    ============================================================ */
 async function attemptLogin(name, password){
   LOGIN_ERROR='';
+  if(isConfigPlaceholder()){
+    LOGIN_ERROR = 'Supabase is not configured yet. Edit config.js with your Project URL and anon key from Supabase → Project Settings → API.';
+    render();
+    return;
+  }
   const {data, error} = await supabase.rpc('login', {p_name:name, p_password:password});
-  if(error || !data || data.length===0){
+  if(error){
+    LOGIN_ERROR = error.message?.includes('Failed to fetch') || error.message?.includes('fetch')
+      ? 'Could not reach Supabase. Check SUPABASE_URL in config.js and that your project is running.'
+      : (error.message || 'Login failed.');
+    render();
+    return;
+  }
+  if(!data || data.length===0){
     LOGIN_ERROR = 'Name or password not recognized.';
     render();
     return;
