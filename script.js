@@ -9,6 +9,14 @@ const NODE_ACTIVE = "assets/Node Active.png";
 const NODE_INACTIVE = "assets/Node Not Active.png";
 const NODE_ALERT = "assets/Node Alert.png";
 
+const REWARD_POOL = [
+  { key:'movie',  name:'Movie night',             icon:'🎬', glyph:'FILM' },
+  { key:'cuddle', name:'Cuddling',                icon:'💕', glyph:'HUG'  },
+  { key:'free',   name:'Free Time',               icon:'⏰', glyph:'TIME' },
+  { key:'love',   name:'Love Making',             icon:'❤️', glyph:'LOVE' },
+  { key:'dinner', name:'Dinner of Your Choice',   icon:'🍽️', glyph:'FOOD' },
+];
+
 /* ---------- session ---------- */
 function loadSession(){ try{ return JSON.parse(localStorage.getItem('hq_session')||'null'); }catch(e){ return null; } }
 function saveSession(s){ localStorage.setItem('hq_session', JSON.stringify(s)); }
@@ -19,14 +27,14 @@ let ROLE = SESSION ? SESSION.role : null;
 
 /* ---------- in-memory caches (rebuilt from Supabase on load / realtime) ---------- */
 let CONFIG = { phases:[], checklist:[], negativeConditions:[], rewards:[] };
-let STATE = { currentTic:1, phaseIndex:0, phaseStartTic:1, phaseStartDate:null, pendingSpin:false, gameComplete:false };
+let STATE = { currentTic:1, phaseIndex:0, phaseStartTic:1, phaseStartDate:null, pendingSpin:false, gameComplete:false, rewardTics:[] };
 let DAY_LOGS = {};       // tic -> {checks, comment, flagged, flagReason, setback, completedAt}
 let HISTORY = [];
 let EARNED = [];
 let PENDING_REPORTS = []; // phase_reports where accepted = false
 
 let TAB = 'map';
-let MODAL = null;
+let PENDING_REWARD_PICK = null; // { tic } — Mario picker after landing on a reward node
 let LOGIN_ERROR = '';
 let LOADING = true;
 
@@ -58,7 +66,8 @@ async function fetchAll(){
       phaseStartTic: qs.data.phase_start_tic,
       phaseStartDate: qs.data.phase_start_date,
       pendingSpin: qs.data.pending_spin,
-      gameComplete: qs.data.game_complete
+      gameComplete: qs.data.game_complete,
+      rewardTics: Array.isArray(qs.data.reward_tics) ? qs.data.reward_tics : []
     };
   }
   CONFIG.phases = (ph.data||[]).map(p=>({id:p.id, name:p.name, tics:p.tics, orderIndex:p.order_index}));
@@ -75,6 +84,7 @@ async function fetchAll(){
   EARNED = (earned.data||[]).map(e=>({id:e.id, rewardId:e.reward_id, name:e.name, desc:e.description, wonAtTic:e.won_at_tic, wonAt:e.won_at, used:e.used, usedAt:e.used_at, usableAtTic:e.usable_at_tic}));
   PENDING_REPORTS = (reports.data||[]).map(r=>({id:r.id, phaseId:r.phase_id, phaseName:r.phase_name, startTic:r.start_tic, endTic:r.end_tic, startDate:r.start_date, endDate:r.end_date, setbackCount:r.setback_count, accepted:r.accepted}));
 
+  await ensurePhaseRewardTics();
   LOADING = false;
   render();
 }
@@ -106,13 +116,13 @@ function isDueOnTic(item, tic){ const r = Math.max(1, parseInt(item.repeatDays)|
 function dueItemsForTic(tic){ return CONFIG.checklist.filter(c=>isDueOnTic(c,tic)); }
 function getLog(tic){ return DAY_LOGS[tic] || {checks:{}, comment:'', flagged:false, flagReason:'', setback:0, completedAt:null}; }
 
-// Waypoints traced from WorldMapExample — serpentine from start (bottom) to finish (top-left).
+// Waypoints along the trail — red circle (start) at bottom, blue circle (finish) top-left.
 const PATH_POINTS = [
-  [57,95],[60,95],[64,94],[68,94],[72,93],[76,93],[80,92],
-  [80,85],[77,80],[74,76],[71,72],[66,64],[66,59],[67,55],[71,53],[75,51],[78,47],[78,42],[77,38],[75,34],[71,31],[66,29],
-  [28,31],[28,35],[28,40],[28,44],[28,48],[28,53],[27,57],[25,61],[25,66],[25,70],
-  [28,73],[31,72],[35,71],[39,71],[43,70],[47,69],[51,70],[55,72],[55,77],[51,80],[48,84],[49,88],[52,93],
-  [28,26],[28,22],[28,18],[28,14],[28,9]
+  [57.0,94.5],[60.4,94.8],[63.9,94.3],[67.4,93.8],[71.1,93.4],[74.7,92.9],[78.3,92.4],
+  [80.0,85.0],[77.3,80.5],[74.3,76.1],[70.7,71.8],[65.6,63.6],[65.6,59.3],[66.7,55.0],[71.0,53.1],[75.1,50.8],[77.9,46.8],[78.2,42.3],[77.4,38.2],[75.0,33.9],[70.9,30.8],[66.5,29.0],
+  [28.3,31.1],[28.3,35.4],[28.4,39.5],[28.3,43.8],[28.0,48.2],[27.7,52.7],[26.7,57.1],[25.3,61.4],[24.7,66.0],[24.7,70.3],
+  [27.6,72.9],[31.3,72.2],[35.1,71.4],[38.9,70.7],[42.7,70.0],[46.8,69.4],[51.1,70.3],[55.4,71.5],[54.8,77.3],[50.6,80.3],[48.2,83.8],[49.3,88.2],[52.4,92.8],
+  [28.3,26.4],[28.3,22.2],[28.3,17.9],[28.4,13.6],[28.4,4.9]
 ];
 function pathLength(){ let len=0; for(let i=1;i<PATH_POINTS.length;i++){ const [x1,y1]=PATH_POINTS[i-1],[x2,y2]=PATH_POINTS[i]; len+=Math.hypot(x2-x1,y2-y1); } return len; }
 function pointAtFraction(frac){
@@ -134,6 +144,40 @@ function nodeAssetForTic(tic){
   if(tic === STATE.currentTic) return NODE_ACTIVE;
   if(getLog(tic).flagged) return NODE_ALERT;
   return NODE_INACTIVE;
+}
+
+function earnedTicSet(){ return new Set(EARNED.map(e=>e.wonAtTic)); }
+function hasRewardOnTic(tic){
+  return STATE.rewardTics.includes(tic) && !earnedTicSet().has(tic);
+}
+function generateRewardTics(startTic, endTic, fromTic){
+  const candidates=[];
+  for(let t=fromTic; t<=endTic; t++) candidates.push(t);
+  if(!candidates.length) return [];
+  const pct = 0.14 + Math.random() * 0.08;
+  let count = Math.max(1, Math.round(candidates.length * pct));
+  count = Math.min(count, Math.max(1, Math.floor(candidates.length * 0.3)));
+  const shuffled = [...candidates].sort(()=>Math.random()-0.5);
+  return shuffled.slice(0, count).sort((a,b)=>a-b);
+}
+async function ensurePhaseRewardTics(){
+  const phase = currentPhase();
+  if(!phase || STATE.gameComplete) return;
+  const earned = earnedTicSet();
+  const inPhase = STATE.rewardTics.filter(t=>t>=phase.startTic && t<=phase.endTic && !earned.has(t));
+  if(inPhase.length) {
+    if(inPhase.length !== STATE.rewardTics.length) await persistRewardTics(inPhase);
+    return;
+  }
+  const fresh = generateRewardTics(phase.startTic, phase.endTic, Math.max(phase.startTic, STATE.currentTic));
+  await persistRewardTics(fresh);
+}
+async function persistRewardTics(tics){
+  STATE.rewardTics = tics;
+  await supabase.from('quest_state').update({reward_tics:tics, updated_at:todayISO()}).eq('id',1);
+}
+function rewardByName(name){
+  return REWARD_POOL.find(r=>r.name===name) || CONFIG.rewards.find(r=>r.name===name);
 }
 
 /* ============================================================
@@ -174,11 +218,20 @@ async function toggleCheck(tic, itemId){
 async function setComment(tic, text){ await upsertDayLog(tic, {comment:text}); }
 
 async function completeDay(){
-  if(PENDING_REPORTS.length || STATE.gameComplete) return;
+  if(PENDING_REPORTS.length || STATE.gameComplete || PENDING_REWARD_PICK) return;
   const tic = STATE.currentTic;
   await upsertDayLog(tic, {completedAt: todayISO()});
   await insertHistory({type:'complete', tic, amount:null, reason:null, comment:null});
 
+  if(hasRewardOnTic(tic)){
+    PENDING_REWARD_PICK = {tic};
+    render();
+    return;
+  }
+  await advanceAfterDayComplete(tic);
+}
+
+async function advanceAfterDayComplete(tic){
   const phase = currentPhase();
   if(tic >= phase.endTic){
     await openPhaseCompletion(phase);
@@ -187,6 +240,23 @@ async function completeDay(){
   }
   render();
   scheduleRefresh();
+}
+
+async function awardRandomReward(tic, poolIdx){
+  const pick = REWARD_POOL[poolIdx];
+  const dbReward = CONFIG.rewards.find(r=>r.name===pick.name);
+  await supabase.from('earned_rewards').insert({
+    reward_id: dbReward?.id || null,
+    name: pick.name,
+    description: dbReward?.desc || '',
+    won_at_tic: tic,
+    used: false,
+    usable_at_tic: tic
+  });
+  const remaining = STATE.rewardTics.filter(t=>t!==tic);
+  await persistRewardTics(remaining);
+  PENDING_REWARD_PICK = null;
+  await advanceAfterDayComplete(tic);
 }
 
 async function applyFlag(reasonObj, comment, customSetback){
@@ -216,19 +286,7 @@ async function openPhaseCompletion(phase){
     start_date: STATE.phaseStartDate, end_date: todayISO(),
     setback_count: setbackCount, accepted: false
   });
-  await updateQuestState({currentTic: phase.endTic, pendingSpin: CONFIG.rewards.length>0});
-}
-
-async function resolveSpin(rewardIdx){
-  const reward = CONFIG.rewards[rewardIdx];
-  const usableAtTic = reward.timing==='immediate' ? STATE.currentTic : STATE.currentTic + (parseInt(reward.timingValue)||0);
-  await supabase.from('earned_rewards').insert({
-    reward_id: reward.id, name: reward.name, description: reward.desc,
-    won_at_tic: STATE.currentTic, used:false, usable_at_tic: usableAtTic
-  });
-  await updateQuestState({pendingSpin:false});
-  render();
-  scheduleRefresh();
+  await updateQuestState({currentTic: phase.endTic, pendingSpin:false});
 }
 
 async function acceptPhaseReport(report){
@@ -239,7 +297,10 @@ async function acceptPhaseReport(report){
     await updateQuestState({gameComplete:true});
   } else {
     const newStart = STATE.currentTic + 1;
+    const nextPhase = bounds[newPhaseIndex];
+    const rewardTics = generateRewardTics(nextPhase.startTic, nextPhase.endTic, nextPhase.startTic);
     await updateQuestState({phaseIndex:newPhaseIndex, phaseStartTic:newStart, currentTic:newStart, phaseStartDate: todayISO()});
+    await persistRewardTics(rewardTics);
   }
   render();
   scheduleRefresh();
@@ -283,10 +344,13 @@ async function resetQuest(){
     supabase.from('earned_rewards').delete().not('id','is',null),
     supabase.from('phase_reports').delete().not('id','is',null)
   ]);
+  const phase = CONFIG.phases[0];
+  const rewardTics = phase ? generateRewardTics(1, phase.tics, 1) : [];
   await supabase.from('quest_state').update({
     current_tic:1, phase_index:0, phase_start_tic:1, phase_start_date: todayISO(),
-    pending_spin:false, game_complete:false
+    pending_spin:false, game_complete:false, reward_tics: rewardTics
   }).eq('id',1);
+  PENDING_REWARD_PICK = null;
   await fetchAll();
 }
 
@@ -355,12 +419,16 @@ function renderMap(){
 
   let nodes = '';
   let charMarkup = '';
+  let rewardMarkers = '';
   for(let tic = phaseStart; tic <= phaseEnd; tic++){
     const frac = ticPathFraction(tic, phaseStart, phaseTics);
     const [x,y] = pointAtFraction(frac);
     const isActive = tic === STATE.currentTic;
-    const nodeSize = phaseTics > 60 ? 'map-node--sm' : (phaseTics > 35 ? 'map-node--md' : '');
+    const nodeSize = phaseTics > 50 ? 'map-node--sm' : (phaseTics > 25 ? 'map-node--md' : '');
     nodes += `<img class="map-node ${nodeSize}${isActive?' map-node--active':''}" src="${nodeAssetForTic(tic)}" style="left:${x}%; top:${y}%;" alt="tic ${tic}" title="Tic ${tic}">`;
+    if(hasRewardOnTic(tic) && tic >= STATE.currentTic){
+      rewardMarkers += `<div class="map-reward-marker pixel" style="left:${x}%; top:${y}%;" title="Hidden reward">★</div>`;
+    }
     if(isActive){
       charMarkup = `<img class="char-token" src="${CHAR_IMG}" style="left:${x}%; top:${y}%;" alt="your character">`;
     }
@@ -371,6 +439,7 @@ function renderMap(){
     <img class="map-img" src="${MAP_IMG}" alt="quest map">
     <div class="map-overlay">
       ${nodes}
+      ${rewardMarkers}
       ${charMarkup}
       <div class="tic-banner">DAY ${ticInPhase}/${phaseTics}</div>
     </div>
@@ -393,6 +462,7 @@ function renderToday(){
   const log = getLog(tic);
   const due = dueItemsForTic(tic);
   let html = `<div class="panel"><h2>TODAY · TIC ${tic}</h2>`;
+  if(hasRewardOnTic(tic)){ html += `<div class="reward-banner pixel">★ Hidden reward on this node!</div>`; }
   if(log.flagged){ html += `<div class="flag-banner">⚠ Flagged: ${log.flagReason} (−${log.setback} tics)</div>`; }
   if(due.length===0){
     html += `<div class="empty-state">No checklist items are due today. Spouse A can add some in Setup.</div>`;
@@ -418,11 +488,12 @@ function renderRewards(){
   const ready = EARNED.filter(r=>!r.used);
   const used = EARNED.filter(r=>r.used);
   let html = `<div class="panel"><h2>REWARDS EARNED</h2>`;
-  if(ready.length===0 && used.length===0){ html += `<div class="empty-state">No rewards yet — they're won at the end of each phase.</div>`; }
+  if(ready.length===0 && used.length===0){ html += `<div class="empty-state">No rewards yet — complete days on ★ nodes to win random prizes.</div>`; }
   ready.forEach(r=>{
     const canUse = STATE.currentTic >= r.usableAtTic;
+    const pool = rewardByName(r.name);
     html += `<div class="reward-card">
-      <h4>${r.name}</h4><p>${r.desc||''}</p>
+      <h4>${pool?.icon ? pool.icon+' ':''}${r.name}</h4><p>${r.desc||''}</p>
       <span class="reward-status ${canUse?'ready':'waiting'}">${canUse? 'Ready to use' : 'Unlocks at tic '+r.usableAtTic}</span>
       ${canUse? `<div class="btn-row"><button class="btn gold" data-use="${r.id}">Use this reward</button></div>` : ''}
     </div>`;
@@ -466,7 +537,7 @@ function renderCoach(){
 
 function renderSetup(){
   let html = `<div class="panel"><h2>PHASES / TIERS</h2>
-    <p class="hint">Each phase is a stretch of tics. When Spouse B passes the last tic in a phase, a reward spin triggers and a report card is generated for your review.</p>`;
+    <p class="hint">Each phase is a stretch of tics. Hidden ★ reward nodes are scattered on the map — completing those days wins a random prize. Phase-end report cards still go to Coach for review.</p>`;
   CONFIG.phases.forEach(p=>{
     html += `<div class="list-row">
       <input type="text" class="grow" data-phase-name="${p.id}" value="${p.name}">
@@ -503,20 +574,16 @@ function renderSetup(){
   html += `<div class="btn-row"><button class="btn ghost" id="addCondBtn">+ Add condition</button></div></div>`;
 
   html += `<div class="panel"><h2>REWARDS POOL</h2>
-    <p class="hint">One of these is randomly won on every phase completion. "Delay" means Spouse B must wait that many extra tics before using it.</p>`;
-  CONFIG.rewards.forEach(r=>{
-    html += `<div class="list-row list-row--reward">
-      <input type="text" class="grow" data-rw-name="${r.id}" value="${r.name}" placeholder="Reward name">
-      <button class="x-btn" data-remove-rw="${r.id}">×</button>
-      <textarea class="field-full" rows="1" data-rw-desc="${r.id}" placeholder="Description">${r.desc||''}</textarea>
-      <select class="field-select" data-rw-timing="${r.id}">
-        <option value="immediate" ${r.timing==='immediate'?'selected':''}>Immediate</option>
-        <option value="delay" ${r.timing==='delay'?'selected':''}>Delay (tics)</option>
-      </select>
-      ${r.timing==='delay'? `<input type="number" class="input-num--tics" data-rw-value="${r.id}" value="${r.timingValue||0}" min="0">`:''}
+    <p class="hint">★ nodes on the map award one of these at random (Mario-style picker) when Spouse B completes that day.</p>
+    <div class="reward-pool-grid">`;
+  REWARD_POOL.forEach(r=>{
+    html += `<div class="reward-pool-item">
+      <span class="reward-pool-icon pixel">${r.icon}</span>
+      <span class="reward-pool-name">${r.name}</span>
     </div>`;
   });
-  html += `<div class="btn-row"><button class="btn ghost" id="addRwBtn">+ Add reward</button></div></div>`;
+  html += `</div>
+    <p class="hint">~15–22% of remaining phase days get a hidden ★ each phase.</p></div>`;
 
   html += `<div class="panel"><h2>RESET</h2>
     <p class="hint">Clears all progress, history, and earned rewards. Phases/checklist/rewards setup stays as-is.</p>
@@ -525,19 +592,40 @@ function renderSetup(){
   return html;
 }
 
+function renderRewardPicker(){
+  if(!PENDING_REWARD_PICK) return '';
+  const items = REWARD_POOL.map((r,i)=>`
+    <div class="mario-item" data-mario-idx="${i}">
+      <div class="mario-item-frame">
+        <span class="mario-item-icon">${r.icon}</span>
+        <span class="mario-item-glyph pixel">${r.glyph}</span>
+      </div>
+    </div>`).join('');
+  return `<div class="modal-bg"><div class="modal modal--center modal--mario">
+    <h2 class="pixel modal-title mario-title">ITEM GET!</h2>
+    <p class="hint">A reward was hidden on this node...</p>
+    <div class="mario-picker-wrap">
+      <div class="mario-cursor pixel" id="marioCursor">▼</div>
+      <div class="mario-track" id="marioTrack">${items}</div>
+    </div>
+    <div class="mario-result" id="marioResult" hidden>
+      <div class="mario-result-frame">
+        <span class="mario-result-icon" id="marioResultIcon"></span>
+        <span class="mario-result-glyph pixel" id="marioResultGlyph"></span>
+      </div>
+      <div class="mario-result-name pixel" id="marioResultName"></div>
+    </div>
+    <div class="btn-row btn-row--center">
+      <button class="btn gold" id="marioStartBtn">Reveal reward</button>
+      <button class="btn" id="marioCollectBtn" hidden>Collect!</button>
+    </div>
+  </div></div>`;
+}
+
 function renderModal(){
+  if(PENDING_REWARD_PICK) return renderRewardPicker();
   if(PENDING_REPORTS.length===0) return '';
   const report = PENDING_REPORTS[0];
-
-  if(STATE.pendingSpin){
-    return `<div class="modal-bg"><div class="modal modal--center">
-      <h2 class="pixel modal-title">PHASE COMPLETE!</h2>
-      <p class="hint">Spin to reveal Spouse B's reward.</p>
-      <div class="slot"><div class="slot-box"><div class="slot-text" id="slotText">???</div></div></div>
-      <div class="btn-row btn-row--center"><button class="btn gold" id="spinBtn" ${CONFIG.rewards.length===0?'disabled':''}>🎰 Spin</button></div>
-      ${CONFIG.rewards.length===0?'<p class="hint">No rewards configured yet — add some in Setup, or Spouse A can skip ahead via the report card once it appears.</p>':''}
-    </div></div>`;
-  }
 
   const earnedThisPhase = EARNED.filter(e=> e.wonAtTic>=report.startTic && e.wonAtTic<=report.endTic);
   return `<div class="modal-bg"><div class="modal">
@@ -550,6 +638,54 @@ function renderModal(){
     <p class="hint hint--spaced">${ROLE==='coach' ? 'Review and accept to unlock the next phase for Spouse B.' : 'Waiting on Spouse A to review and accept this report.'}</p>
     ${ROLE==='coach' ? `<div class="btn-row"><button class="btn gold" id="acceptReportBtn">Accept & continue</button></div>` : ''}
   </div></div>`;
+}
+
+function runMarioRewardPicker(startBtn){
+  startBtn.disabled = true;
+  const track = document.getElementById('marioTrack');
+  const cursor = document.getElementById('marioCursor');
+  const result = document.getElementById('marioResult');
+  const collectBtn = document.getElementById('marioCollectBtn');
+  const items = [...track.querySelectorAll('.mario-item')];
+  const finalIdx = Math.floor(Math.random() * REWARD_POOL.length);
+  let idx = 0;
+  let ticks = 0;
+  const maxTicks = (5 + Math.floor(Math.random() * 4)) * items.length + finalIdx;
+
+  function highlight(i){
+    items.forEach((el,j)=> el.classList.toggle('mario-item--lit', j===i));
+    const item = items[i];
+    if(item && cursor){
+      const trackRect = track.getBoundingClientRect();
+      const itemRect = item.getBoundingClientRect();
+      cursor.style.left = (itemRect.left - trackRect.left + itemRect.width/2)+'px';
+    }
+  }
+
+  function finish(){
+    highlight(finalIdx);
+    const pick = REWARD_POOL[finalIdx];
+    document.getElementById('marioResultIcon').textContent = pick.icon;
+    document.getElementById('marioResultGlyph').textContent = pick.glyph;
+    document.getElementById('marioResultName').textContent = pick.name;
+    result.hidden = false;
+    track.classList.add('mario-track--done');
+    collectBtn.hidden = false;
+    collectBtn.dataset.idx = finalIdx;
+    startBtn.hidden = true;
+  }
+
+  function step(){
+    idx = (idx+1) % items.length;
+    highlight(idx);
+    ticks++;
+    if(ticks >= maxTicks){ finish(); return; }
+    const delay = ticks > maxTicks - 6 ? 90 + (ticks - (maxTicks - 6)) * 55 : 80;
+    setTimeout(step, delay);
+  }
+
+  highlight(0);
+  setTimeout(step, 80);
 }
 
 function renderLogin(){
@@ -640,32 +776,14 @@ function attachEvents(){
   root.querySelectorAll('[data-cond-setback]').forEach(i=> i.onblur=()=>updateCondition(i.dataset.condSetback,'setback',i.value));
   root.querySelectorAll('[data-remove-cond]').forEach(b=> b.onclick=()=>removeCondition(b.dataset.removeCond));
 
-  const addRwBtn = document.getElementById('addRwBtn'); if(addRwBtn) addRwBtn.onclick = addReward;
-  root.querySelectorAll('[data-rw-name]').forEach(i=> i.onblur=()=>updateReward(i.dataset.rwName,'name',i.value));
-  root.querySelectorAll('[data-rw-desc]').forEach(i=> i.onblur=()=>updateReward(i.dataset.rwDesc,'desc',i.value));
-  root.querySelectorAll('[data-rw-timing]').forEach(i=> i.onchange=()=>updateReward(i.dataset.rwTiming,'timing',i.value));
-  root.querySelectorAll('[data-rw-value]').forEach(i=> i.onblur=()=>updateReward(i.dataset.rwValue,'timingValue',i.value));
-  root.querySelectorAll('[data-remove-rw]').forEach(b=> b.onclick=()=>removeReward(b.dataset.removeRw));
-
   const resetBtn = document.getElementById('resetBtn');
   if(resetBtn) resetBtn.onclick = ()=>{ if(confirm('Reset all progress for both of you? This cannot be undone.')) resetQuest(); };
 
-  const spinBtn = document.getElementById('spinBtn');
-  if(spinBtn) spinBtn.onclick = ()=>{
-    spinBtn.disabled = true;
-    const names = CONFIG.rewards.map(r=>r.name);
-    const slotText = document.getElementById('slotText');
-    let count=0;
-    const finalIdx = Math.floor(Math.random()*CONFIG.rewards.length);
-    const interval = setInterval(()=>{
-      slotText.textContent = names[Math.floor(Math.random()*names.length)];
-      count++;
-      if(count>18){
-        clearInterval(interval);
-        slotText.textContent = names[finalIdx];
-        setTimeout(()=> resolveSpin(finalIdx), 900);
-      }
-    }, 90);
+  const marioStart = document.getElementById('marioStartBtn');
+  if(marioStart) marioStart.onclick = ()=> runMarioRewardPicker(marioStart);
+  const marioCollect = document.getElementById('marioCollectBtn');
+  if(marioCollect) marioCollect.onclick = ()=>{
+    if(marioCollect.dataset.idx!=null) awardRandomReward(PENDING_REWARD_PICK.tic, parseInt(marioCollect.dataset.idx,10));
   };
   const acceptBtn = document.getElementById('acceptReportBtn');
   if(acceptBtn) acceptBtn.onclick = ()=> acceptPhaseReport(PENDING_REPORTS[0]);

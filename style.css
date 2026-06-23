@@ -165,16 +165,30 @@ body{
 .map-overlay{position:absolute; inset:0; pointer-events:none;}
 .map-node{
   position:absolute;
-  width:7.5%;
-  max-width:34px;
+  width:4.8%;
+  max-width:22px;
   height:auto;
   transform:translate(-50%,-50%);
-  filter:drop-shadow(0 2px 2px rgba(0,0,0,.35));
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.3));
   transition:left .5s ease, top .5s ease, width .2s ease;
 }
-.map-node--md{width:6%; max-width:28px;}
-.map-node--sm{width:4.8%; max-width:22px;}
+.map-node--md{width:3.8%; max-width:18px;}
+.map-node--sm{width:3%; max-width:14px;}
 .map-node--active{z-index:2;}
+.map-reward-marker{
+  position:absolute;
+  transform:translate(-50%,-130%);
+  color:var(--gold-bright);
+  font-size:9px;
+  line-height:1;
+  text-shadow:1px 1px 0 #000, -1px -1px 0 #000, 1px -1px 0 #000, -1px 1px 0 #000;
+  z-index:4;
+  animation:reward-pulse 1.2s ease-in-out infinite;
+}
+@keyframes reward-pulse{
+  0%,100%{transform:translate(-50%,-130%) scale(1);}
+  50%{transform:translate(-50%,-140%) scale(1.15);}
+}
 .char-token{
   position:absolute;
   width:18%;
@@ -426,6 +440,97 @@ label.field-label{
   line-height:1.5;
 }
 
+/* ---- Mario-style reward picker ---- */
+.modal--mario{max-width:480px;}
+.mario-title{color:var(--gold-bright); text-shadow:2px 2px 0 #000;}
+.mario-picker-wrap{position:relative; margin:16px 0 10px; padding-top:18px;}
+.mario-cursor{
+  position:absolute;
+  top:0;
+  left:0;
+  color:var(--gold-bright);
+  font-size:12px;
+  text-shadow:1px 1px 0 #000;
+  transform:translateX(-50%);
+  transition:left .08s linear;
+  z-index:2;
+}
+.mario-track{
+  display:flex;
+  gap:6px;
+  justify-content:center;
+  flex-wrap:wrap;
+}
+.mario-track--done .mario-item{opacity:.45;}
+.mario-track--done .mario-item--lit{opacity:1;}
+.mario-item{flex:0 0 auto; transition:opacity .2s ease, transform .15s ease;}
+.mario-item-frame{
+  width:64px;
+  height:72px;
+  background:var(--navy-deep);
+  border:3px solid var(--ink);
+  box-shadow:inset 0 0 0 2px var(--gold), 3px 3px 0 #00000055;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:4px;
+}
+.mario-item--lit .mario-item-frame{
+  background:var(--navy);
+  border-color:var(--gold-bright);
+  box-shadow:inset 0 0 0 2px var(--gold-bright), 0 0 12px var(--gold), 3px 3px 0 #00000055;
+  transform:scale(1.08);
+}
+.mario-item-icon{font-size:26px; line-height:1;}
+.mario-item-glyph{font-size:7px; color:var(--gold-bright); letter-spacing:.5px;}
+.mario-result{margin:14px 0 6px;}
+.mario-result-frame{
+  width:88px;
+  height:96px;
+  margin:0 auto 10px;
+  background:var(--navy-deep);
+  border:4px solid var(--gold);
+  box-shadow:4px 4px 0 #00000055;
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+}
+.mario-result-icon{font-size:36px; line-height:1;}
+.mario-result-glyph{font-size:8px; color:var(--gold-bright);}
+.mario-result-name{font-size:10px; color:var(--ink); line-height:1.6; text-align:center;}
+
+.reward-banner{
+  background:linear-gradient(90deg,var(--gold),var(--gold-bright));
+  color:var(--navy-deep);
+  padding:10px 12px;
+  border-radius:7px;
+  font-size:9px;
+  margin-bottom:10px;
+  font-weight:700;
+  line-height:1.5;
+  border:2px solid var(--ink);
+  box-shadow:0 2px 0 #00000044;
+}
+.reward-pool-grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:8px;
+}
+.reward-pool-item{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  background:var(--white);
+  border:2px solid var(--parchment-dim);
+  border-radius:8px;
+  padding:10px;
+}
+.reward-pool-icon{font-size:20px; line-height:1;}
+.reward-pool-name{font-size:13px; font-weight:700; line-height:1.3;}
+
 .report-stat{
   display:flex;
   justify-content:space-between;
@@ -497,9 +602,9 @@ label.field-label{
   .hint{font-size:11.5px; margin:-4px 0 12px;}
 
   .map-wrap{margin:14px;}
-  .map-node{max-width:36px;}
-  .map-node--md{max-width:30px;}
-  .map-node--sm{max-width:24px;}
+  .map-node{max-width:24px;}
+  .map-node--md{max-width:20px;}
+  .map-node--sm{max-width:16px;}
   .char-token{max-width:80px;}
   .tic-banner{top:8px; left:8px; font-size:9px; padding:5px 10px;}
 

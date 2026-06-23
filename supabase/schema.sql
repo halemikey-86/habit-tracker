@@ -46,9 +46,11 @@ create table if not exists quest_state (
   phase_start_date timestamptz not null default now(),
   pending_spin boolean not null default false,
   game_complete boolean not null default false,
+  reward_tics jsonb not null default '[]'::jsonb,
   updated_at timestamptz default now()
 );
 insert into quest_state (id) values (1) on conflict (id) do nothing;
+alter table quest_state add column if not exists reward_tics jsonb not null default '[]'::jsonb;
 
 -- ---------- PHASES / TIERS ----------
 create table if not exists phases (
@@ -220,7 +222,11 @@ where not exists (select 1 from conditions);
 
 insert into rewards (name, description, timing, timing_value)
 select * from (values
-  ('Movie night pick', 'You choose the movie, no vetoes.', 'immediate', 0)
+  ('Movie night', 'You pick the movie — no vetoes.', 'immediate', 0),
+  ('Cuddling', 'Cozy cuddle time, on your terms.', 'immediate', 0),
+  ('Free Time', 'Uninterrupted time for whatever you want.', 'immediate', 0),
+  ('Love Making', 'Romance night, your way.', 'immediate', 0),
+  ('Dinner of Your Choice', 'Pick the restaurant or home-cooked meal.', 'immediate', 0)
 ) as v(name, description, timing, timing_value)
 where not exists (select 1 from rewards);
 
