@@ -117,27 +117,23 @@ function dueItemsForTic(tic){ return CONFIG.checklist.filter(c=>isDueOnTic(c,tic
 function getLog(tic){ return DAY_LOGS[tic] || {checks:{}, comment:'', flagged:false, flagReason:'', setback:0, completedAt:null}; }
 
 // Waypoints along the trail — red circle (start) at bottom, blue circle (finish) top-left.
-const PATH_POINTS = [
-  // START – red circle (center-right, per WorldMapExample)
+const DEFAULT_PATH_POINTS = [
   [55,33],
-  // Down-left toward junction (follows red line in WorldMapExample)
   [51,37],[47,41],[44,46],
-  // Left to left junction
   [36,50],[29,54],
-  // Down left side
   [27,59],[26,64],[26,70],
-  // Right along bottom
   [32,72],[40,72],[48,72],[55,72],
-  // Continue right, curve up the right side (clockwise loop)
   [62,70],[68,65],[72,58],
   [75,50],[77,43],[77,35],[74,27],
-  // Left across the upper map
   [67,25],[60,24],[52,25],[44,27],[37,30],
-  // Castle approach from right
   [30,33],[27,34],
-  // Castle ascent
   [27,27],[27,20],[27,14],[27,8],[27,3]
 ];
+
+function loadCustomPathPoints(){ try{ const s=localStorage.getItem('hq_path_points'); return s ? JSON.parse(s) : null; }catch(e){ return null; } }
+function saveCustomPathPoints(pts){ localStorage.setItem('hq_path_points', JSON.stringify(pts)); }
+
+let PATH_POINTS = loadCustomPathPoints() || DEFAULT_PATH_POINTS.map(p=>[...p]);
 function pathLength(){ let len=0; for(let i=1;i<PATH_POINTS.length;i++){ const [x1,y1]=PATH_POINTS[i-1],[x2,y2]=PATH_POINTS[i]; len+=Math.hypot(x2-x1,y2-y1); } return len; }
 function pointAtFraction(frac){
   frac = Math.max(0, Math.min(1, frac));
@@ -417,7 +413,7 @@ function renderHeader(){
 
 function renderNav(){
   const tabs = ROLE==='coach'
-    ? [['map','Map'],['today','Today'],['rewards','Rewards'],['coach','Coach Tools'],['setup','Setup']]
+    ? [['map','Map'],['today','Today'],['rewards','Rewards'],['coach','Coach Tools'],['setup','Setup'],['edit','Layout']]
     : [['map','Map'],['today','Today'],['rewards','Rewards']];
   return `<div class="nav">${tabs.map(([k,l])=>`<button data-tab="${k}" class="${TAB===k?'active':''}">${l}</button>`).join('')}</div>`;
 }
@@ -606,6 +602,34 @@ function renderSetup(){
   return html;
 }
 
+function renderEdit(){
+  const pts = PATH_POINTS;
+  const dots = pts.map((pt, i) => `
+    <div class="edit-wp${i===0?' edit-wp--start':''}" data-ptidx="${i}"
+         style="left:${pt[0]}%;top:${pt[1]}%;"
+         title="${i===0?'Character Start (drag to move)':'Waypoint '+i}">
+      <span>${i===0?'★':i}</span>
+    </div>`).join('');
+  return `
+  <div class="map-wrap map-edit-active" id="editMapWrap">
+    <img class="map-img" src="${MAP_IMG}" alt="quest map" draggable="false">
+    <div class="map-overlay map-edit-overlay" id="editOverlay">
+      ${dots}
+      <img class="char-token" id="editChar" src="${CHAR_IMG}"
+           style="left:${pts[0][0]}%;top:${pts[0][1]}%;" alt="character" draggable="false">
+    </div>
+  </div>
+  <div class="panel">
+    <h2>LAYOUT EDITOR</h2>
+    <p class="hint">Drag the numbered dots to reshape the path. The ★ dot is where the character starts. Save to keep your layout.</p>
+    <div class="btn-row">
+      <button class="btn gold" id="saveLayoutBtn">Save layout</button>
+      <button class="btn ghost" id="resetLayoutBtn">Reset to default</button>
+    </div>
+    <p class="edit-saved-msg" id="editSavedMsg"></p>
+  </div>`;
+}
+
 function renderRewardPicker(){
   if(!PENDING_REWARD_PICK) return '';
   const items = REWARD_POOL.map((r,i)=>`
@@ -719,7 +743,69 @@ function renderLogin(){
   </div>`;
 }
 
+/* ============================================================
+   MAP LAYOUT EDITOR
+   ============================================================ */
+let _editCleanup = null;
+
+function removeEditListeners(){
+  if(_editCleanup){ _editCleanup(); _editCleanup = null; }
+}
+
+function attachEditEvents(){
+  const wrap = document.getElementById('editMapWrap');
+  const overlay = document.getElementById('editOverlay');
+  if(!wrap || !overlay) return;
+
+  let activeEl = null;
+  let activeIdx = -1;
+
+  overlay.querySelectorAll('.edit-wp').forEach(el => {
+    el.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      activeEl = el;
+      activeIdx = parseInt(el.dataset.ptidx, 10);
+      el.setPointerCapture(e.pointerId);
+    });
+    el.addEventListener('pointermove', e => {
+      if(activeEl !== el) return;
+      e.preventDefault();
+      const rect = wrap.getBoundingClientRect();
+      const x = +Math.max(0, Math.min(100, (e.clientX - rect.left) / rect.width * 100)).toFixed(1);
+      const y = +Math.max(0, Math.min(100, (e.clientY - rect.top) / rect.height * 100)).toFixed(1);
+      PATH_POINTS[activeIdx] = [x, y];
+      el.style.left = x + '%';
+      el.style.top = y + '%';
+      if(activeIdx === 0){
+        const c = document.getElementById('editChar');
+        if(c){ c.style.left = x+'%'; c.style.top = y+'%'; }
+      }
+    });
+    el.addEventListener('pointerup', () => { activeEl = null; activeIdx = -1; });
+    el.addEventListener('pointercancel', () => { activeEl = null; activeIdx = -1; });
+  });
+
+  const saveBtn = document.getElementById('saveLayoutBtn');
+  if(saveBtn) saveBtn.onclick = () => {
+    saveCustomPathPoints(PATH_POINTS);
+    const msg = document.getElementById('editSavedMsg');
+    if(msg){ msg.textContent = 'Layout saved!'; setTimeout(()=>{ msg.textContent=''; }, 2000); }
+  };
+
+  const resetBtn = document.getElementById('resetLayoutBtn');
+  if(resetBtn) resetBtn.onclick = () => {
+    if(confirm('Reset path to the default layout?')){
+      localStorage.removeItem('hq_path_points');
+      PATH_POINTS = DEFAULT_PATH_POINTS.map(p=>[...p]);
+      render();
+    }
+  };
+
+  _editCleanup = () => {};
+}
+
 function render(){
+  removeEditListeners();
   const root = document.getElementById('root');
 
   if(!SESSION){
@@ -743,6 +829,7 @@ function render(){
   else if(TAB==='rewards') body += renderRewards();
   else if(TAB==='coach' && ROLE==='coach') body += renderCoach();
   else if(TAB==='setup' && ROLE==='coach') body += renderSetup();
+  else if(TAB==='edit' && ROLE==='coach') body += renderEdit();
   else { TAB='map'; body = renderHeader()+renderNav()+renderMap(); }
 
   root.innerHTML = body + renderModal();
@@ -801,6 +888,8 @@ function attachEvents(){
   };
   const acceptBtn = document.getElementById('acceptReportBtn');
   if(acceptBtn) acceptBtn.onclick = ()=> acceptPhaseReport(PENDING_REPORTS[0]);
+
+  if(TAB==='edit') attachEditEvents();
 }
 
 /* ---------- init ---------- */

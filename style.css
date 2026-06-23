@@ -557,6 +557,43 @@ label.field-label{
 }
 .error-banner{margin-top:10px; margin-bottom:0;}
 
+/* ---- Layout Editor ---- */
+.map-edit-active { cursor: crosshair; }
+.map-edit-overlay { pointer-events: all !important; }
+.edit-wp {
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  background: rgba(13,20,38,.88);
+  border: 2px solid var(--gold-bright);
+  border-radius: 50%;
+  transform: translate(-50%,-50%);
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  touch-action: none;
+  user-select: none;
+}
+.edit-wp:active { cursor: grabbing; }
+.edit-wp--start {
+  background: var(--forest);
+  border-color: #fff;
+  width: 28px;
+  height: 28px;
+  z-index: 11;
+}
+.edit-wp span {
+  font-family: 'Press Start 2P', monospace;
+  font-size: 7px;
+  color: var(--gold-bright);
+  pointer-events: none;
+  line-height: 1;
+}
+.edit-wp--start span { color: #fff; font-size: 12px; }
+.edit-saved-msg { font-size: 12px; color: var(--forest); font-weight: 800; margin: 8px 0 0; min-height: 18px; }
+
 /* ---- Tablet (600px+) ---- */
 @media (min-width:600px){
   #root{
