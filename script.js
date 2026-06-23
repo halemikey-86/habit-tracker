@@ -3,8 +3,11 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 const cfg = window.HQ_CONFIG;
 const supabase = createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
 
-const CHAR_IMG = "assets/character.webp";
-const MAP_IMG = "assets/map.webp";
+const CHAR_IMG = "assets/MichaelChar.png";
+const MAP_IMG = "assets/Phase 1 Map.png";
+const NODE_ACTIVE = "assets/Node Active.png";
+const NODE_INACTIVE = "assets/Node Not Active.png";
+const NODE_ALERT = "assets/Node Alert.png";
 
 /* ---------- session ---------- */
 function loadSession(){ try{ return JSON.parse(localStorage.getItem('hq_session')||'null'); }catch(e){ return null; } }
@@ -103,10 +106,13 @@ function isDueOnTic(item, tic){ const r = Math.max(1, parseInt(item.repeatDays)|
 function dueItemsForTic(tic){ return CONFIG.checklist.filter(c=>isDueOnTic(c,tic)); }
 function getLog(tic){ return DAY_LOGS[tic] || {checks:{}, comment:'', flagged:false, flagReason:'', setback:0, completedAt:null}; }
 
+// Waypoints traced from WorldMapExample — serpentine from start (bottom) to finish (top-left).
 const PATH_POINTS = [
-  [12,90],[22,80],[14,64],[26,52],[20,38],[34,30],[30,16],
-  [46,10],[58,18],[52,32],[64,40],[58,54],[70,60],[78,48],
-  [84,34],[76,20],[86,10],[92,22],[88,38],[80,52],[86,66],[74,76],[58,80],[44,88],[28,92]
+  [57,95],[60,95],[64,94],[68,94],[72,93],[76,93],[80,92],
+  [80,85],[77,80],[74,76],[71,72],[66,64],[66,59],[67,55],[71,53],[75,51],[78,47],[78,42],[77,38],[75,34],[71,31],[66,29],
+  [28,31],[28,35],[28,40],[28,44],[28,48],[28,53],[27,57],[25,61],[25,66],[25,70],
+  [28,73],[31,72],[35,71],[39,71],[43,70],[47,69],[51,70],[55,72],[55,77],[51,80],[48,84],[49,88],[52,93],
+  [28,26],[28,22],[28,18],[28,14],[28,9]
 ];
 function pathLength(){ let len=0; for(let i=1;i<PATH_POINTS.length;i++){ const [x1,y1]=PATH_POINTS[i-1],[x2,y2]=PATH_POINTS[i]; len+=Math.hypot(x2-x1,y2-y1); } return len; }
 function pointAtFraction(frac){
@@ -119,6 +125,15 @@ function pointAtFraction(frac){
     acc += seg;
   }
   return PATH_POINTS[PATH_POINTS.length-1];
+}
+function ticPathFraction(tic, phaseStartTic, phaseTics){
+  if(phaseTics <= 1) return 0;
+  return (tic - phaseStartTic) / (phaseTics - 1);
+}
+function nodeAssetForTic(tic){
+  if(tic === STATE.currentTic) return NODE_ACTIVE;
+  if(getLog(tic).flagged) return NODE_ALERT;
+  return NODE_INACTIVE;
 }
 
 /* ============================================================
@@ -331,21 +346,33 @@ function renderNav(){
 
 function renderMap(){
   const bounds = phaseBoundaries();
-  const frac = Math.min(1, (STATE.currentTic-1)/Math.max(1,totalTics()-1));
-  const [cx,cy] = pointAtFraction(frac);
-  const dots = bounds.map(b=>{
-    const f = Math.min(1,(b.endTic-1)/Math.max(1,totalTics()-1));
-    const [x,y] = pointAtFraction(f);
-    const done = STATE.phaseIndex > bounds.indexOf(b) || STATE.gameComplete;
-    return `<div class="phase-dot ${done?'done':''}" style="left:${x}%; top:${y}%;" title="${b.name}"></div>`;
-  }).join('');
+  const phase = currentPhase();
+  const phaseTics = phase ? phase.tics : 1;
+  const phaseStart = phase ? phase.startTic : 1;
+  const phaseEnd = phase ? phase.endTic : totalTics();
+  const ticInPhase = phase ? STATE.currentTic - phaseStart + 1 : STATE.currentTic;
+  const phaseFrac = ticPathFraction(STATE.currentTic, phaseStart, phaseTics);
+
+  let nodes = '';
+  let charMarkup = '';
+  for(let tic = phaseStart; tic <= phaseEnd; tic++){
+    const frac = ticPathFraction(tic, phaseStart, phaseTics);
+    const [x,y] = pointAtFraction(frac);
+    const isActive = tic === STATE.currentTic;
+    const nodeSize = phaseTics > 60 ? 'map-node--sm' : (phaseTics > 35 ? 'map-node--md' : '');
+    nodes += `<img class="map-node ${nodeSize}${isActive?' map-node--active':''}" src="${nodeAssetForTic(tic)}" style="left:${x}%; top:${y}%;" alt="tic ${tic}" title="Tic ${tic}">`;
+    if(isActive){
+      charMarkup = `<img class="char-token" src="${CHAR_IMG}" style="left:${x}%; top:${y}%;" alt="your character">`;
+    }
+  }
+
   return `
   <div class="map-wrap">
     <img class="map-img" src="${MAP_IMG}" alt="quest map">
     <div class="map-overlay">
-      ${dots}
-      <img class="char-token" src="${CHAR_IMG}" style="left:${cx}%; top:${cy}%;">
-      <div class="tic-banner">DAY ${STATE.currentTic}/${totalTics()}</div>
+      ${nodes}
+      ${charMarkup}
+      <div class="tic-banner">DAY ${ticInPhase}/${phaseTics}</div>
     </div>
   </div>
   <div class="panel">
@@ -354,7 +381,7 @@ function renderMap(){
       const cls = i<STATE.phaseIndex ? 'done' : (i===STATE.phaseIndex? 'current':'upcoming');
       return `<div class="phase-chip ${cls}"><span>${b.name}</span><span>${cls==='done'?'✔ done':(cls==='current'? 'in progress':'tics '+b.startTic+'–'+b.endTic)}</span></div>`;
     }).join('')}
-    <div class="progress-track"><div class="progress-fill" style="width:${frac*100}%"></div></div>
+    <div class="progress-track"><div class="progress-fill" style="width:${phaseFrac*100}%"></div></div>
   </div>`;
 }
 

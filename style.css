@@ -163,23 +163,28 @@ body{
 }
 .map-img{display:block; width:100%; height:auto;}
 .map-overlay{position:absolute; inset:0; pointer-events:none;}
+.map-node{
+  position:absolute;
+  width:7.5%;
+  max-width:34px;
+  height:auto;
+  transform:translate(-50%,-50%);
+  filter:drop-shadow(0 2px 2px rgba(0,0,0,.35));
+  transition:left .5s ease, top .5s ease, width .2s ease;
+}
+.map-node--md{width:6%; max-width:28px;}
+.map-node--sm{width:4.8%; max-width:22px;}
+.map-node--active{z-index:2;}
 .char-token{
   position:absolute;
-  width:40px;
-  transform:translate(-50%,-92%);
+  width:18%;
+  max-width:72px;
+  transform:translate(-50%,-88%);
   filter:drop-shadow(0 3px 2px rgba(0,0,0,.5));
   transition:left .6s ease, top .6s ease;
+  z-index:3;
+  pointer-events:none;
 }
-.phase-dot{
-  position:absolute;
-  width:12px;
-  height:12px;
-  border-radius:50%;
-  background:var(--gold);
-  border:2px solid var(--ink);
-  transform:translate(-50%,-50%);
-}
-.phase-dot.done{background:var(--forest);}
 .tic-banner{
   position:absolute;
   top:6px;
@@ -492,8 +497,10 @@ label.field-label{
   .hint{font-size:11.5px; margin:-4px 0 12px;}
 
   .map-wrap{margin:14px;}
-  .char-token{width:48px;}
-  .phase-dot{width:13px; height:13px;}
+  .map-node{max-width:36px;}
+  .map-node--md{max-width:30px;}
+  .map-node--sm{max-width:24px;}
+  .char-token{max-width:80px;}
   .tic-banner{top:8px; left:8px; font-size:9px; padding:5px 10px;}
 
   .progress-track{height:14px;}
@@ -584,8 +591,7 @@ label.field-label{
 
   .modal-title{font-size:13px;}
 
-  .char-token{width:52px;}
-  .phase-dot{width:14px; height:14px;}
+  .char-token{max-width:88px;}
   .tic-banner{font-size:10px;}
 
   .panel,
