@@ -191,8 +191,8 @@ body{
 }
 .char-token{
   position:absolute;
-  width:18%;
-  max-width:72px;
+  width:9%;
+  max-width:38px;
   transform:translate(-50%,-88%);
   filter:drop-shadow(0 3px 2px rgba(0,0,0,.5));
   transition:left .6s ease, top .6s ease;
@@ -605,7 +605,7 @@ label.field-label{
   .map-node{max-width:24px;}
   .map-node--md{max-width:20px;}
   .map-node--sm{max-width:16px;}
-  .char-token{max-width:80px;}
+  .char-token{max-width:44px;}
   .tic-banner{top:8px; left:8px; font-size:9px; padding:5px 10px;}
 
   .progress-track{height:14px;}
@@ -696,7 +696,7 @@ label.field-label{
 
   .modal-title{font-size:13px;}
 
-  .char-token{max-width:88px;}
+  .char-token{max-width:50px;}
   .tic-banner{font-size:10px;}
 
   .panel,

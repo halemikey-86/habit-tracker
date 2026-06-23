@@ -6,7 +6,7 @@ const supabase = createClient(cfg.SUPABASE_URL, cfg.SUPABASE_ANON_KEY);
 const CHAR_IMG = "assets/MichaelChar.png";
 const MAP_IMG = "assets/Phase 1 Map.png";
 const NODE_ACTIVE = "assets/Node Active.png";
-const NODE_INACTIVE = "assets/Node Not Active.png";
+const NODE_COMPLETED = "assets/Node Completed.png";
 const NODE_ALERT = "assets/Node Alert.png";
 
 const REWARD_POOL = [
@@ -118,11 +118,25 @@ function getLog(tic){ return DAY_LOGS[tic] || {checks:{}, comment:'', flagged:fa
 
 // Waypoints along the trail — red circle (start) at bottom, blue circle (finish) top-left.
 const PATH_POINTS = [
-  [57.0,94.5],[60.4,94.8],[63.9,94.3],[67.4,93.8],[71.1,93.4],[74.7,92.9],[78.3,92.4],
-  [80.0,85.0],[77.3,80.5],[74.3,76.1],[70.7,71.8],[65.6,63.6],[65.6,59.3],[66.7,55.0],[71.0,53.1],[75.1,50.8],[77.9,46.8],[78.2,42.3],[77.4,38.2],[75.0,33.9],[70.9,30.8],[66.5,29.0],
-  [28.3,31.1],[28.3,35.4],[28.4,39.5],[28.3,43.8],[28.0,48.2],[27.7,52.7],[26.7,57.1],[25.3,61.4],[24.7,66.0],[24.7,70.3],
-  [27.6,72.9],[31.3,72.2],[35.1,71.4],[38.9,70.7],[42.7,70.0],[46.8,69.4],[51.1,70.3],[55.4,71.5],[54.8,77.3],[50.6,80.3],[48.2,83.8],[49.3,88.2],[52.4,92.8],
-  [28.3,26.4],[28.3,22.2],[28.3,17.9],[28.4,13.6],[28.4,4.9]
+  // START – red circle (center-right, per WorldMapExample)
+  [55,33],
+  // Down-left toward junction (follows red line in WorldMapExample)
+  [51,37],[47,41],[44,46],
+  // Left to left junction
+  [36,50],[29,54],
+  // Down left side
+  [27,59],[26,64],[26,70],
+  // Right along bottom
+  [32,72],[40,72],[48,72],[55,72],
+  // Continue right, curve up the right side (clockwise loop)
+  [62,70],[68,65],[72,58],
+  [75,50],[77,43],[77,35],[74,27],
+  // Left across the upper map
+  [67,25],[60,24],[52,25],[44,27],[37,30],
+  // Castle approach from right
+  [30,33],[27,34],
+  // Castle ascent
+  [27,27],[27,20],[27,14],[27,8],[27,3]
 ];
 function pathLength(){ let len=0; for(let i=1;i<PATH_POINTS.length;i++){ const [x1,y1]=PATH_POINTS[i-1],[x2,y2]=PATH_POINTS[i]; len+=Math.hypot(x2-x1,y2-y1); } return len; }
 function pointAtFraction(frac){
@@ -141,9 +155,9 @@ function ticPathFraction(tic, phaseStartTic, phaseTics){
   return (tic - phaseStartTic) / (phaseTics - 1);
 }
 function nodeAssetForTic(tic){
-  if(tic === STATE.currentTic) return NODE_ACTIVE;
   if(getLog(tic).flagged) return NODE_ALERT;
-  return NODE_INACTIVE;
+  if(getLog(tic).completedAt) return NODE_COMPLETED;
+  return NODE_ACTIVE;
 }
 
 function earnedTicSet(){ return new Set(EARNED.map(e=>e.wonAtTic)); }

@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" shape-rendering="crispEdges">
+  <!-- background -->
+  <rect width="16" height="16" fill="#1b3a1b"/>
+  <!-- battlements -->
+  <rect x="2" y="2" width="1" height="2" fill="#aaaacc"/>
+  <rect x="4" y="2" width="1" height="2" fill="#aaaacc"/>
+  <rect x="6" y="2" width="1" height="2" fill="#aaaacc"/>
+  <rect x="8" y="2" width="1" height="2" fill="#aaaacc"/>
+  <rect x="10" y="2" width="1" height="2" fill="#aaaacc"/>
+  <rect x="12" y="2" width="1" height="2" fill="#aaaacc"/>
+  <!-- castle wall -->
+  <rect x="2" y="4" width="12" height="6" fill="#8888aa"/>
+  <!-- windows -->
+  <rect x="3" y="6" width="2" height="2" fill="#1a2a6a"/>
+  <rect x="11" y="6" width="2" height="2" fill="#1a2a6a"/>
+  <!-- gate sides -->
+  <rect x="2" y="10" width="4" height="3" fill="#8888aa"/>
+  <rect x="10" y="10" width="4" height="3" fill="#8888aa"/>
+  <!-- gate arch -->
+  <rect x="6" y="10" width="4" height="3" fill="#110a00"/>
+  <!-- ground -->
+  <rect x="0" y="13" width="16" height="3" fill="#2d7a2d"/>
+  <!-- cream path to gate -->
+  <rect x="6" y="13" width="4" height="1" fill="#d4b56a"/>
+  <rect x="7" y="14" width="2" height="1" fill="#d4b56a"/>
+  <!-- flag on left battlement -->
+  <rect x="2" y="0" width="1" height="2" fill="#888"/>
+  <rect x="3" y="0" width="2" height="1" fill="#cc2222"/>
+</svg>
